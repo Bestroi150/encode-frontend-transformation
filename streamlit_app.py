@@ -775,11 +775,21 @@ if uploaded_files:
                 'Institution': institution if institution else 'Not available',
                 'FindPlace': find_place if find_place else 'Not available'
             }
+            
             # Clean the data to ensure valid JSON
             for key, value in monument_data.items():
                 if isinstance(value, str):
                     # Replace problematic characters and normalize whitespace
                     monument_data[key] = ' '.join(value.replace('\n', ' ').replace('\r', '').replace('\t', ' ').split())
+                elif isinstance(value, dict):
+                    # Handle nested dictionary (Dimensions)
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, str):
+                            value[subkey] = ' '.join(subvalue.replace('\n', ' ').replace('\r', '').replace('\t', ' ').split())
+            
+            # Only append if we have valid data
+            if any(value != 'Not available' for value in monument_data.values() if isinstance(value, str)):
+                all_data.append(monument_data)
 
     with query_tab:
         st.header("Search & Query TEI Documents")
@@ -955,5 +965,7 @@ if uploaded_files:
                     st.json(formatted_data)
                 except Exception as e:
                     st.error(f"Error displaying JSON data: {str(e)}")
+        elif len(all_data) == 0:
+            st.warning("No valid monument data available for visualization. Please upload XML files with monument information.")
         else:
-            st.write("No data available for visualization. Please upload some XML files first.")
+            st.error("An error occurred while processing the data. Please check your XML files.")
