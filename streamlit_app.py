@@ -896,8 +896,11 @@ if uploaded_files:
 
     with analytics_tab:
         st.header("Analytics & Visualizations")
-        if all_data:
+        st.write("Debug: Number of records:", len(all_data))  # Debug line
+        if all_data and len(all_data) > 0:
+            # Convert the list to a DataFrame
             df = pd.DataFrame(all_data)
+            st.write("Debug: DataFrame shape:", df.shape)  # Debug line
             
             # Create a bar chart of monument types
             st.subheader("Distribution of Monument Types")
