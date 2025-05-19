@@ -1,1 +1,6 @@
-streamlit
+streamlit>=1.24.0
+pandas>=2.0.3
+plotly==5.15.0
+pillow>=9.5.0
+lxml>=4.9.3
+python-dateutil==2.8.2
