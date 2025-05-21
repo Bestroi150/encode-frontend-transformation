@@ -6,21 +6,9 @@ from typing import Dict, Any
 from collections import defaultdict
 from io import BytesIO
 from PIL import Image
-import plotly.express as px
-import streamlit as st
-import pandas as pd
-import xml.etree.ElementTree as ET
 import requests
 import plotly.express as px
-
 import re
-# Set page configuration
-st.set_page_config(
-    page_title="TEI Monument Visualization",
-    page_icon="🏛️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Define TEI XML namespace
 NS = {
@@ -163,25 +151,21 @@ def parse_tei(file):
 def format_leiden_text(elem):
     """
     Recursively traverse the element tree to create a plain text version of the
-    inscription text (edition) with Leiden+ style formatting, covering full EpiDoc cases.
+    Greek text (edition) with Leiden+ style formatting, covering full EpiDoc cases.
     """
     text = ''
     if elem.text:
         text += elem.text
-    
-    # Handle the case where edition div contains ab 
-    if elem.tag.split('}')[-1] == 'div':
-        ab_elem = elem.find('tei:ab', NS)
-        if ab_elem is not None:
-            return format_leiden_text(ab_elem)
 
     for child in elem:
         tag = child.tag.split('}')[-1]
 
         # Line break without split
-        if tag == 'lb':
-            n = child.attrib.get('n', '')
-            text += f'\n{n}. ' if n else '\n'
+        if tag == 'lb' and child.attrib.get('break') == 'no':
+            pass
+        # Line break
+        elif tag == 'lb':
+            text += '\n'
 
         # Text divisions
         elif tag == 'div' and child.attrib.get('type') == 'textpart':
@@ -291,11 +275,7 @@ def format_leiden_text(elem):
             ex = child.find('tei:ex', NS)
             if abbr is not None and ex is not None:
                 cert = ex.attrib.get('cert')
-                text += f"{abbr.text or ''}({ex.text or ''}{'?' if cert=='low' else ''})"
-
-        # Handle interp (interpunct)
-        elif tag == 'interp':
-            text += ' · '  # Add interpunct symbol
+                text += f"{abbr.text}({ex.text}{'?' if cert=='low' else ''})"
 
         # Abbreviations, expansions, numerals
         elif tag in ('abbr', 'ex', 'num'):
@@ -359,55 +339,29 @@ def extract_english_text(div, child_tag):
 
 def extract_apparatus_english(div):
     """
-    Extract apparatus text from <app> elements in the apparatus section.
-    For each app element, combines location and note information.
+    Extract apparatus text from <app> elements in the apparatus section that have xml:lang="en".
+    It searches for each <app> element with the attribute and extracts the text of its <note> child.
     """
     texts = []
     if div is None:
         return ""
     for app in div.findall(".//tei:app", NS):
-        loc = app.attrib.get("loc", "")
-        note = app.find(".//tei:note", NS)
-        if note is not None and note.text:
-            note_text = note.text.strip()
-            texts.append(f"Line {loc}: {note_text}")
+        if app.attrib.get("{http://www.w3.org/XML/1998/namespace}lang") == "en":
+            note = app.find("tei:note", NS)
+            if note is not None and note.text:
+                texts.append(note.text.strip())
     return "\n".join(texts)
 
 def extract_bibliography(div):
     """
-    Extract and format bibliography entries from <bibl> elements.
+    Extract and join text from each <bibl> element.
     """
     texts = []
     if div is None:
         return ""
     for bibl in div.findall(".//tei:bibl", NS):
-        parts = []
-        # Get title
-        title = bibl.find("tei:title", NS)
-        if title is not None and title.text:
-            parts.append(title.text.strip())
-        
-        # Get date
-        date = bibl.find("tei:date", NS)
-        if date is not None and date.text:
-            parts.append(f"({date.text.strip()})")
-        
-        # Get publication place
-        place = bibl.find("tei:pubPlace", NS)
-        if place is not None and place.text:
-            parts.append(place.text.strip())
-        
-        # Get volume and page numbers if they exist
-        volume = bibl.find("tei:biblScope[@unit='volume']", NS)
-        page = bibl.find("tei:biblScope[@unit='page']", NS)
-        if volume is not None and volume.text:
-            parts.append(f"vol. {volume.text.strip()}")
-        if page is not None and page.text:
-            parts.append(f"p. {page.text.strip()}")
-        
-        if parts:
-            texts.append(", ".join(parts))
-    
+        if bibl.text:
+            texts.append(bibl.text.strip())
     return "\n".join(texts)
 
 st.title("TEI Monument Visualization (Plain Text Versions)")
@@ -445,8 +399,7 @@ if uploaded_files:
     unique_types = set()
     unique_materials = set()
     unique_categories = set()
-    parsed_files = []
-    file_counter = 0  # Add a counter for unique keys
+    parsed_files = []  
     
     for uploaded_file in uploaded_files:
         uploaded_file.seek(0)
@@ -492,16 +445,12 @@ if uploaded_files:
             publication_stmt = file_desc.find("tei:publicationStmt", NS) if file_desc is not None else None
             source_desc = file_desc.find("tei:sourceDesc", NS) if file_desc is not None else None
             ms_desc = source_desc.find("tei:msDesc", NS) if source_desc is not None else None
-            
-            # Get monument title from titleStmt/title
-            title_elem = title_stmt.find("tei:title", NS) if title_stmt is not None else None
-            monument_title = title_elem.text.strip() if title_elem is not None and title_elem.text else "Untitled Monument"
 
-            # Get monument ID from publicationStmt
+            # Monument Title using the idno from publicationStmt.
             mon_id = get_text(publication_stmt, "tei:idno[@type='filename']")
+            monument_title = f"Monument {mon_id}" if mon_id else "Monument"
 
-            # Get editors - in this format they have role and xml:id attributes
-            editors = title_stmt.findall("tei:editor", NS) if title_stmt is not None else []
+            editors = title_stmt.findall("tei:editor/tei:persName", NS) if title_stmt is not None else []
             editor_names = [ed.text.strip() for ed in editors if ed.text]
             editor_str = ", ".join(editor_names) if editor_names else "Not available"
 
@@ -510,29 +459,18 @@ if uploaded_files:
             object_desc = phys_desc.find("tei:objectDesc", NS) if phys_desc is not None else None
             support_desc = object_desc.find("tei:supportDesc", NS) if object_desc is not None else None
             support = support_desc.find("tei:support", NS) if support_desc is not None else None
-            
-            # Get object type directly from objectType element
-            object_type_elem = support.find("tei:objectType", NS) if support is not None else None
-            object_type = object_type_elem.text.strip() if object_type_elem is not None and object_type_elem.text else "Not available"
-            
-            # Get material directly from material element
-            material_elem = support.find("tei:material", NS) if support is not None else None
-            material = material_elem.text.strip() if material_elem is not None and material_elem.text else "Not available"
+            object_type = get_text(support, "tei:objectType", lang="en")
+            material = get_text(support, "tei:material", lang="en")
 
-            # right under
             ms_identifier = ms_desc.find("tei:msIdentifier", NS) if ms_desc is not None else None
-
-            # get repository and idno directly
+            alt_identifier = ms_identifier.find("tei:altIdentifier[@xml:lang='en']", NS) if ms_identifier is not None else None
             institution = ""
-            inventory   = ""
-            if ms_identifier is not None:
-                repo_elem = ms_identifier.find("tei:repository", NS)
-                if repo_elem is not None and repo_elem.text:
-                    institution = repo_elem.text.strip()
-                idno_elem = ms_identifier.find("tei:idno", NS)
-                if idno_elem is not None and idno_elem.text:
-                    inventory = idno_elem.text.strip()
-
+            repository = alt_identifier.find("tei:repository", NS) if alt_identifier is not None else None
+            if repository is not None:
+                ref = repository.find("tei:ref", NS)
+                if ref is not None and ref.text:
+                    institution = ref.text.strip()
+            inventory = get_text(alt_identifier, "tei:idno")
 
             dimensions = support.find("tei:dimensions", NS) if support is not None else None
             height = dimensions.find("tei:height", NS).text.strip() if dimensions is not None and dimensions.find("tei:height", NS) is not None else ""
@@ -541,8 +479,7 @@ if uploaded_files:
 
             hand_desc = phys_desc.find("tei:handDesc", NS) if phys_desc is not None else None
             hand_note = hand_desc.find("tei:handNote", NS) if hand_desc is not None else None
-            height_elem = hand_note.find("tei:height", NS) if hand_note is not None else None
-            letter_size = height_elem.text.strip() if height_elem is not None and height_elem.text else ""
+            letter_size = hand_note.find("tei:height", NS).text.strip() if hand_note is not None and hand_note.find("tei:height", NS) is not None else ""
 
             layout_desc = object_desc.find("tei:layoutDesc", NS) if object_desc is not None else None
             layout = get_text(layout_desc, "tei:layout", lang="en")
@@ -556,30 +493,29 @@ if uploaded_files:
                         break
             find_place = ""
             if provenance_found is not None:
-                place = provenance_found.find("tei:origPlace", NS)
-                if place is not None and place.text:
-                    find_place = place.text.strip()
+                seg = provenance_found.find("tei:seg[@xml:lang='en']", NS)
+                if seg is not None and seg.text:
+                    find_place = seg.text.strip()
 
             origin = ""
             if history is not None:
                 origin_elem = history.find("tei:origin", NS)
                 if origin_elem is not None:
                     orig_place = origin_elem.find("tei:origPlace", NS)
-                    if orig_place is not None and orig_place.text:
-                        origin = orig_place.text.strip()
+                    if orig_place is not None:
+                        seg = orig_place.find("tei:seg[@xml:lang='en']", NS)
+                        if seg is not None and seg.text:
+                            origin = seg.text.strip()
 
             dating = ""
             if history is not None:
                 origin_elem = history.find("tei:origin", NS)
                 if origin_elem is not None:
                     orig_date = origin_elem.find("tei:origDate", NS)
-                    if orig_date is not None and orig_date.text:
-                        dating = orig_date.text.strip()
-                        # Also get the date range if available
-                        not_before = orig_date.attrib.get('notBefore', '')
-                        not_after = orig_date.attrib.get('notAfter', '')
-                        if not_before and not_after:
-                            dating += f" (between {not_before} and {not_after})"
+                    if orig_date is not None:
+                        seg = orig_date.find("tei:seg[@xml:lang='en']", NS)
+                        if seg is not None and seg.text:
+                            dating = seg.text.strip()
 
             ms_contents = ms_desc.find("tei:msContents", NS) if ms_desc is not None else None
             summary = ms_contents.find("tei:summary", NS) if ms_contents is not None else None
@@ -602,7 +538,7 @@ if uploaded_files:
             if body_elem is not None:
                 for div in body_elem.findall("tei:div", NS):
                     div_type = div.attrib.get("type", "")
-                    if div_type == "edition":
+                    if div_type == "edition" and div.attrib.get("{http://www.w3.org/XML/1998/namespace}lang") == "grc":
                         edition_div = div
                     elif div_type == "apparatus":
                         apparatus_div = div
@@ -720,11 +656,11 @@ if uploaded_files:
             else:
                 st.write("No facsimile elements found in the document.")
 
-            st.subheader("Latin Text (Leiden+ formatted)")
-            st.markdown("The following text is rendered from the edition section:")
+            st.subheader("Greek Text (Leiden+ formatted)")
+            st.markdown("The following text is rendered from the edition (Greek) section:")
             st.text(leiden_text)
 
-            st.subheader("Translation")
+            st.subheader("Translation (English)")
             if translation_text:
                 st.text(translation_text)
             else:
@@ -752,44 +688,19 @@ if uploaded_files:
                 label="Download Original XML",
                 data=raw_xml,
                 file_name=mon_id + ".xml" if mon_id else "tei_document.xml",
-                mime="text/xml",
-                key=f"download_button_{file_counter}_{mon_id if mon_id else file_data['name']}"
+                mime="text/xml"
             )
-            file_counter += 1
 
             
             monument_data = {
-                'ID': inventory if inventory else 'Not available',
+                'Title': monument_title,
                 'Type': object_type if object_type else 'Not available',
                 'Material': material if material else 'Not available',
                 'Origin': origin if origin else 'Not available',
                 'Date': dating if dating else 'Not available',
-                'Text': leiden_text[:500] if leiden_text else 'Not available',  # Limit text size for JSON view
-                'Bibliography': bibliography_text[:500] if bibliography_text else 'Not available',  # Include bibliography with limit
-                'Category': inscription_category if inscription_category else 'Not available',
-                'Dimensions': {
-                    'height': height if height else 'Not available',
-                    'width': width if width else 'Not available',
-                    'depth': depth if depth else 'Not available'
-                },
-                'Institution': institution if institution else 'Not available',
-                'FindPlace': find_place if find_place else 'Not available'
+                'Category': inscription_category if inscription_category else 'Not available'
             }
-            
-            # Clean the data to ensure valid JSON
-            for key, value in monument_data.items():
-                if isinstance(value, str):
-                    # Replace problematic characters and normalize whitespace
-                    monument_data[key] = ' '.join(value.replace('\n', ' ').replace('\r', '').replace('\t', ' ').split())
-                elif isinstance(value, dict):
-                    # Handle nested dictionary (Dimensions)
-                    for subkey, subvalue in value.items():
-                        if isinstance(subvalue, str):
-                            value[subkey] = ' '.join(subvalue.replace('\n', ' ').replace('\r', '').replace('\t', ' ').split())
-            
-            # Only append if we have valid data
-            if any(value != 'Not available' for value in monument_data.values() if isinstance(value, str)):
-                all_data.append(monument_data)
+            all_data.append(monument_data)
 
     with query_tab:
         st.header("Search & Query TEI Documents")
@@ -906,11 +817,8 @@ if uploaded_files:
 
     with analytics_tab:
         st.header("Analytics & Visualizations")
-        st.write("Debug: Number of records:", len(all_data))  # Debug line
-        if all_data and len(all_data) > 0:
-            # Convert the list to a DataFrame
+        if all_data:
             df = pd.DataFrame(all_data)
-            st.write("Debug: DataFrame shape:", df.shape)  # Debug line
             
             # Create a bar chart of monument types
             st.subheader("Distribution of Monument Types")
@@ -938,9 +846,9 @@ if uploaded_files:
             fig_timeline = px.scatter(
                 df,
                 x='Date',
-                y='Type',
-                color='Material',
-                hover_data=['ID', 'Text'],
+                y='Category',
+                color='Type',
+                hover_data=['Title', 'Material'],
                 title="Monuments Timeline"
             )
             st.plotly_chart(fig_timeline)
@@ -948,24 +856,5 @@ if uploaded_files:
             
             st.subheader("Raw Data")
             st.dataframe(df)
-
-            # Display single JSON view of all data with improved formatting
-            st.subheader("JSON View")
-            with st.expander("View Complete Dataset as JSON"):
-                try:
-                    # Create a more readable version of the data
-                    formatted_data = []
-                    for item in all_data:
-                        formatted_item = {}
-                        for key, value in item.items():
-                            # Skip empty or "Not available" values to reduce clutter
-                            if value and value != "Not available":
-                                formatted_item[key] = value
-                        formatted_data.append(formatted_item)
-                    st.json(formatted_data)
-                except Exception as e:
-                    st.error(f"Error displaying JSON data: {str(e)}")
-        elif len(all_data) == 0:
-            st.warning("No valid monument data available for visualization. Please upload XML files with monument information.")
         else:
-            st.error("An error occurred while processing the data. Please check your XML files.")
+            st.write("No data available for visualization. Please upload some XML files first.")
