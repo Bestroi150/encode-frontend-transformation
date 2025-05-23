@@ -361,6 +361,7 @@ st.markdown("""
 This application displays scholarly records of ancient Greek inscriptions.
 Upload one or more TEI XML files to view key sections and information.
 For the apparatus, translation, commentary, and bibliography sections only the English text is extracted and displayed as plain text.
+For a case study download at least 5 XML files from the [Telamon project](https://telamon.uni-sofia.bg/) via the  **`download`** option in the end of description.   
 """)
 
 col1, col2 = st.columns(2)
