@@ -355,7 +355,7 @@ def extract_bibliography(div):
             texts.append(bibl.text.strip())
     return "\n".join(texts)
 
-st.title("TEI Monument Visualization (Plain Text Versions)")
+st.title("ENCODE EpiDoc")
 
 st.markdown("""
 This application displays scholarly records of ancient Greek inscriptions.
