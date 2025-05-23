@@ -26,7 +26,7 @@ st.sidebar.markdown("""
     the Erasmus+ BIP Intensive ENCODE week (May 18–24, 2025).
 
     **Developed by**:
-    Kristiyan Simeonov
+    Kristiyan Simeonov, Sofia University "St. Kliment Ohridski"
 """)
 
 def safe_find_text(elem, xpath, default="", lang=None):
