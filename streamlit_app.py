@@ -16,27 +16,18 @@ NS = {
     'xml': 'http://www.w3.org/XML/1998/namespace'
 }
 
-# Set default renderer for Plotly
-# Create sidebar
-with st.sidebar:
-    try:
-        logo_path = str(Path(__file__).parent / "imgs" / "logo_inscripta.jpg")
-        st.image(logo_path, width=300, caption="Latin and Ancient Greek Inscriptions")
-    except Exception as e:
-        st.write(f"Logo image not found: {str(e)}")
-    
-    st.header("Project Information")
-    st.markdown("""
+st.sidebar.header("Project Information")
+st.sidebar.markdown("""
     **Epigraphic Database Viewer** is a tool designed to visualize and analyze ancient inscriptions.
     
     **Features**:
-    - Upload and view XML inscriptions data
-    - Explore inscriptions in various formats
-    - Visualize geographical origins on an interactive map
-    
+    This app can be used to convert TEI-encoded Telamon EpiDoc XML inscriptions into searchable visualizations with statistical information. 
+    It was developed for the Front-End Data Processing and Visualization lecture (May 23, 2025) at the University of Parma, Italy, within 
+    the Erasmus+ BIP Intensive ENCODE week (May 18–24, 2025).
+
     **Developed by**:
-    Your Institution Name
-    """)
+    Kristiyan Simeonov
+""")
 
 def safe_find_text(elem, xpath, default="", lang=None):
     """
