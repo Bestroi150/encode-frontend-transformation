@@ -684,7 +684,15 @@ if uploaded_files:
             )
 
             
+            text_el = root.find("tei:text", NS)
+            people = sorted({
+                " ".join("".join(p.itertext()).split())
+                for p in (text_el.iter(f"{{{NS['tei']}}}persName") if text_el is not None else [])
+                if "".join(p.itertext()).strip()
+            })
+
             monument_data = {
+                'People': "; ".join(people),
                 'Title': monument_title,
                 'Type': object_type if object_type else 'Not available',
                 'Material': material if material else 'Not available',
@@ -811,6 +819,8 @@ if uploaded_files:
         st.header("Analytics & Visualizations")
         if all_data:
             df = pd.DataFrame(all_data)
+            for col in df.columns:
+                df[col] = df[col].fillna('Not available').astype(str).str.strip().replace('', 'Not available')
             
             # Create a bar chart of monument types
             st.subheader("Distribution of Monument Types")
@@ -844,6 +854,64 @@ if uploaded_files:
                 title="Monuments Timeline"
             )
             st.plotly_chart(fig_timeline)
+            
+            # Interactive graph: monuments linked to their attributes
+            st.subheader("Interactive Graph View")
+            attrs = st.multiselect(
+                "Connect monuments by",
+                ['Type', 'Material', 'Origin', 'Date', 'Category'],
+                default=['Type', 'Material']
+            )
+            show_people = st.checkbox("Include people", value=True)
+            all_people = sorted({p.strip() for v in df['People'] for p in v.split(';')
+                                 if p.strip() and p.strip() != 'Not available'})
+            selected_people = []
+            if show_people:
+                selected_people = st.multiselect(
+                    "Filter by people (empty = all)", all_people
+                )
+            if attrs or show_people:
+                import networkx as nx
+                import plotly.graph_objects as go
+                G = nx.Graph()
+                for i, row in df.iterrows():
+                    row_people = [p.strip() for p in row['People'].split(';')
+                                  if p.strip() and p.strip() != 'Not available']
+                    if selected_people and not set(selected_people) & set(row_people):
+                        continue
+                    G.add_node(('m', i), label=row['Title'], kind='Monument')
+                    if show_people:
+                        for p in row_people:
+                            if selected_people and p not in selected_people:
+                                continue
+                            G.add_node(('People', p), label=f"Person: {p}", kind='People')
+                            G.add_edge(('m', i), ('People', p))
+                    for a in attrs:
+                        node = (a, row[a])
+                        G.add_node(node, label=f"{a}: {row[a]}", kind=a)
+                        G.add_edge(('m', i), node)
+                pos = nx.spring_layout(G, seed=42)
+                ex, ey = [], []
+                for u, v in G.edges():
+                    ex += [pos[u][0], pos[v][0], None]
+                    ey += [pos[u][1], pos[v][1], None]
+                fig_graph = go.Figure(go.Scatter(x=ex, y=ey, mode='lines', line=dict(width=0.5, color='#999'), hoverinfo='none'))
+                for kind in ['Monument'] + (['People'] if show_people else []) + attrs:
+                    nodes = [n for n in G.nodes if G.nodes[n]['kind'] == kind]
+                    fig_graph.add_trace(go.Scatter(
+                        x=[pos[n][0] for n in nodes],
+                        y=[pos[n][1] for n in nodes],
+                        mode='markers',
+                        name=kind,
+                        text=[G.nodes[n]['label'] for n in nodes],
+                        hoverinfo='text',
+                        marker=dict(size=[8 if kind == 'Monument' else 8 + 4 * G.degree(n) for n in nodes])
+                    ))
+                fig_graph.update_layout(
+                    showlegend=True, hovermode='closest', dragmode='pan',
+                    xaxis=dict(visible=False), yaxis=dict(visible=False)
+                )
+                st.plotly_chart(fig_graph, use_container_width=True)
             
             
             st.subheader("Raw Data")
