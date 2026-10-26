@@ -8,6 +8,7 @@ from io import BytesIO
 from PIL import Image
 import requests
 import plotly.express as px
+import plotly.graph_objects as go
 import re
 
 # Define TEI XML namespace
@@ -845,13 +846,34 @@ if uploaded_files:
             
             # Create a timeline of monuments
             st.subheader("Timeline of Monuments")
-            fig_timeline = px.scatter(
-                df,
-                x='Date',
-                y='Category',
-                color='Type',
-                hover_data=['Title', 'Material'],
-                title="Monuments Timeline"
+            plot_df = df.copy()
+            for col in ['Date', 'Category', 'Type', 'Material', 'Title']:
+                plot_df[col] = plot_df[col].fillna('Not available').astype(str).str.strip().replace('', 'Not available')
+
+            fig_timeline = go.Figure()
+            categories = sorted(plot_df['Category'].dropna().unique().tolist())
+
+            for category in categories:
+                subset = plot_df[plot_df['Category'] == category]
+                if subset.empty:
+                    continue
+                fig_timeline.add_trace(go.Scatter(
+                    x=subset['Date'],
+                    y=subset['Category'],
+                    mode='markers',
+                    name=category,
+                    text=subset['Title'],
+                    customdata=subset[['Type', 'Material']].to_numpy(),
+                    hovertemplate='<b>%{text}</b><br>Date: %{x}<br>Type: %{customdata[0]}<br>Material: %{customdata[1]}<extra></extra>',
+                    marker=dict(size=10)
+                ))
+
+            fig_timeline.update_layout(
+                title='Monuments Timeline',
+                xaxis_title='Date',
+                yaxis_title='Category',
+                template='plotly_white',
+                legend_title='Category'
             )
             st.plotly_chart(fig_timeline)
             

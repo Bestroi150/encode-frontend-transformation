@@ -1,5 +1,5 @@
 streamlit>=1.24.0
-pandas>=2.0.3
+pandas==2.1.4
 plotly==5.15.0
 networkx>=3.0
 pillow>=9.5.0
